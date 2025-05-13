@@ -1,0 +1,65 @@
+services:
+  db:
+    image: mysql:8.0
+    platform: linux/x86_64 # Apple Siliconなどの環境で問題が起きる場合
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-myapp}
+      MYSQL_USER: ${MYSQL_USER:-myapp}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-password}
+    volumes:
+      - db_data:/var/lib/mysql
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-root}"]
+      timeout: 20s
+      retries: 3
+
+  redis:
+    image: redis:7.0
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      timeout: 5s
+      retries: 3
+
+  backend:
+    build: 
+      dockerfile: ./docker/backend/Dockerfile
+    command: bundle exec rails s -p 3000 -b '0.0.0.0'
+    environment:
+      RAILS_ENV: development
+      DATABASE_URL: mysql2://myapp:${MYSQL_PASSWORD:-password}@db:3306/myapp
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - ./backend:/app
+      - backend_gems:/usr/local/bundle
+    ports:
+      - "3000:3000"
+    depends_on:
+      - db
+      - redis
+
+  frontend:
+    build: 
+      dockerfile: ./docker/frontend/Dockerfile
+    command: npm run dev
+    environment:
+      NEXT_PUBLIC_BACKEND_URL: http://backend:3000 # Rails APIのURL
+    volumes:
+      - ./frontend:/app
+      - frontend_modules:/app/node_modules
+    ports:
+      - "3001:3001"
+    depends_on:
+      - backend
+
+volumes:
+  db_data:
+  redis_data:
+  backend_gems:
+  frontend_modules:
